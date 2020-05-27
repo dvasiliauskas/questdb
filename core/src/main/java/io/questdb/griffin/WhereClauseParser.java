@@ -175,7 +175,8 @@ final class WhereClauseParser implements Mutable {
             }
 
             try {
-                model.intersectIntervals(TimestampFormatUtils.tryParse(node.rhs.token, 1, node.rhs.token.length() - 1), Long.MAX_VALUE);
+                long lo =  IntrinsicModel.parseCeilingPartialDate(node.rhs.token, 1, node.rhs.token.length() - 1);
+                model.intersectIntervals(lo, Long.MAX_VALUE);
                 node.intrinsicValue = IntrinsicModel.TRUE;
                 return true;
             } catch (NumericException e) {
@@ -190,7 +191,9 @@ final class WhereClauseParser implements Mutable {
             }
 
             try {
-                model.intersectIntervals(Long.MIN_VALUE, TimestampFormatUtils.tryParse(node.lhs.token, 1, node.lhs.token.length() - 1) - increment);
+                long hi = IntrinsicModel.parseFloorPartialDate(node.lhs.token, 1, node.lhs.token.length() - 1) - increment;
+                model.intersectIntervals(Long.MIN_VALUE, hi);
+                node.intrinsicValue = IntrinsicModel.TRUE;
                 return true;
             } catch (NumericException e) {
                 throw SqlException.invalidDate(node.lhs.position);
@@ -316,7 +319,7 @@ final class WhereClauseParser implements Mutable {
                     return false;
                 }
 
-                long hi = TimestampFormatUtils.tryParse(node.rhs.token, 1, node.rhs.token.length() - 1) - inc;
+                long hi = IntrinsicModel.parseFloorPartialDate(node.rhs.token, 1, node.rhs.token.length() - 1) - inc;
                 model.intersectIntervals(Long.MIN_VALUE, hi);
                 node.intrinsicValue = IntrinsicModel.TRUE;
                 return true;
@@ -331,7 +334,7 @@ final class WhereClauseParser implements Mutable {
                     return false;
                 }
 
-                long lo = TimestampFormatUtils.tryParse(node.lhs.token, 1, node.lhs.token.length() - 1);
+                long lo = IntrinsicModel.parseCeilingPartialDate(node.lhs.token, 1, node.lhs.token.length() - 1);
                 model.intersectIntervals(lo, Long.MAX_VALUE);
                 node.intrinsicValue = IntrinsicModel.TRUE;
                 return true;
