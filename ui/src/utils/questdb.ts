@@ -30,7 +30,13 @@ export type Result<T extends Record<string, any>> =
       }
     }
 
-type ExecResult = {
+export type ErrorResult = {
+  error: string
+  position: number
+  query: string
+}
+
+export type ExecResult = {
   columns: ColumnDefinition[]
   count: number
   dataset: any[][]
@@ -53,6 +59,7 @@ const hostConfig: HostConfig = {
 
 export class QuestDB {
   private _config: HostConfig
+  private _controllers: AbortController[] = []
 
   constructor(config?: string | Partial<HostConfig>) {
     if (!config) {
@@ -72,13 +79,29 @@ export class QuestDB {
     }
   }
 
+  abort = () => {
+    this._controllers.forEach((controller) => {
+      controller.abort()
+    })
+  }
+
   async query<T>(query: string): Promise<Result<T>> {
+    const controller = new AbortController()
     const payload = {
       query,
     }
+
+    this._controllers.push(controller)
     const response = await fetch(
       `${this._config.host}:${this._config.port}/exec?${encodeParams(payload)}`,
+      { signal: controller.signal },
     )
+
+    const index = this._controllers.indexOf(controller)
+
+    if (index >= 0) {
+      this._controllers.splice(index, 1)
+    }
 
     if (!response.ok) {
       return {
@@ -111,17 +134,36 @@ export class QuestDB {
     }
   }
 
-  async queryRaw(query: string): Promise<ExecResult> {
+  async queryRaw(query: string): Promise<ExecResult | ErrorResult> {
+    const controller = new AbortController()
     const payload = {
       query,
     }
+
+    this._controllers.push(controller)
     const response = await fetch(
       `${this._config.host}:${this._config.port}/exec?${encodeParams(payload)}`,
+      { signal: controller.signal },
     )
 
-    const data = (await response.json()) as ExecResult
+    const index = this._controllers.indexOf(controller)
 
-    return data
+    if (index >= 0) {
+      this._controllers.splice(index, 1)
+    }
+
+    if (response.ok) {
+      const data = (await response.json()) as ExecResult
+      return data
+    }
+
+    if (response.status === 400) {
+      const data = (await response.json()) as ErrorResult
+      return Promise.reject(data)
+    }
+    console.log(response)
+
+    throw new Error("Is QuestDB accessible and running?")
   }
 
   async showTables(): Promise<Result<QuestDBTable>> {

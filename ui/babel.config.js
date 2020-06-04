@@ -1,10 +1,13 @@
-const transformRuntimePlugin = [
-  "@babel/plugin-transform-runtime",
-  {
-    corejs: 3,
-    regenerator: true,
-    useESModules: true,
-  },
+const plugins = [
+  "transform-class-properties",
+  [
+    "@babel/plugin-transform-runtime",
+    {
+      corejs: 3,
+      regenerator: true,
+      useESModules: true,
+    },
+  ],
 ]
 
 module.exports = {
@@ -21,7 +24,7 @@ module.exports = {
           },
         ],
         "@babel/plugin-transform-react-jsx-source",
-        transformRuntimePlugin,
+        ...plugins,
       ],
     },
     production: {
@@ -35,7 +38,7 @@ module.exports = {
             ssr: false,
           },
         ],
-        transformRuntimePlugin,
+        ...plugins,
       ],
     },
     test: {

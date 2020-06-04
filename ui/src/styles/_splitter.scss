@@ -29,7 +29,6 @@
 .splitter {
   width: 100%;
   flex: 0 0 6px;
-  margin: 3px 0;
   border: none;
   background: #585858;
 }
@@ -39,11 +38,10 @@
 }
 
 .splitter:hover {
-  background: #6a6a6a;
+  background: #bbb;
 }
 
 .qs-ghost {
-  background: #6a6a6a;
-  opacity: 0.4;
+  background: #bbb;
   z-index: 10;
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import { TransitionGroup } from "react-transition-group"
 import { from, combineLatest, of } from "rxjs"
 import { delay, startWith } from "rxjs/operators"
@@ -8,9 +8,10 @@ import { Loader3 } from "@styled-icons/remix-fill/Loader3"
 import { Refresh } from "@styled-icons/remix-line/Refresh"
 
 import {
-  Pane,
+  PaneContent,
+  PaneWrapper,
   PopperHover,
-  PaneTitle,
+  PaneMenu,
   SecondaryButton,
   spinAnimation,
   Text,
@@ -20,11 +21,23 @@ import { color, QuestDB, QuestDBTable } from "utils"
 
 import Table from "./Table"
 
-const Title = styled(PaneTitle)`
+type Props = Readonly<{
+  widthOffset?: number
+}>
+
+const Wrapper = styled(PaneWrapper)<{
+  basis?: number
+}>`
+  flex: 0 0 350px;
+  ${({ basis }) => basis && `flex-basis: ${basis}px`};
+`
+
+const Menu = styled(PaneMenu)`
   justify-content: space-between;
 `
 
-const Wrapper = styled(Pane)`
+const Content = styled(PaneContent)`
+  display: block;
   font-family: ${({ theme }) => theme.fontMonospace};
 `
 
@@ -43,9 +56,11 @@ const FlexSpacer = styled.div`
   flex: 1;
 `
 
-const Schema = () => {
+const Schema = ({ widthOffset }: Props) => {
   const [quest] = useState(new QuestDB({ port: BACKEND_PORT }))
   const [loading, setLoading] = useState(false)
+  const element = useRef<HTMLDivElement | null>(null)
+  const [width, setWidth] = useState<number>()
   const [tables, setTables] = useState<QuestDBTable[]>()
   const [opened, setOpened] = useState<string>()
 
@@ -71,9 +86,15 @@ const Schema = () => {
     void fetchTables()
   }, [fetchTables])
 
+  useEffect(() => {
+    if (element.current && widthOffset) {
+      setWidth(element.current.getBoundingClientRect().width + widthOffset)
+    }
+  }, [widthOffset])
+
   return (
-    <>
-      <Title>
+    <Wrapper basis={width} ref={element}>
+      <Menu>
         <Text color="draculaForeground">
           <DatabaseIcon size="18px" />
           Tables
@@ -90,12 +111,12 @@ const Schema = () => {
         >
           <Tooltip>Refresh</Tooltip>
         </PopperHover>
-      </Title>
+      </Menu>
 
-      <Wrapper>
+      <Content>
         {loading && <Loader size="48px" />}
         {!loading && tables && (
-          <TransitionGroup>
+          <TransitionGroup component={null}>
             {tables.map(({ tableName }) => (
               <Table
                 expanded={tableName === opened}
@@ -107,8 +128,8 @@ const Schema = () => {
           </TransitionGroup>
         )}
         {!loading && <FlexSpacer />}
-      </Wrapper>
-    </>
+      </Content>
+    </Wrapper>
   )
 }
 
