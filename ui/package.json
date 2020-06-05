@@ -33,6 +33,7 @@
     "bootstrap-sass": "3.4.1",
     "clipboard": "2.0.6",
     "core-js": "3.6.5",
+    "date-fns": "^2.14.0",
     "docsearch.js": "2.6.3",
     "echarts": "4.8.0",
     "glyphicons-halflings": "1.9.1",

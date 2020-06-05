@@ -83,7 +83,7 @@ const Table = ({ description, expanded, onChange, tableName }: Props) => {
         from(quest.showColumns(tableName)).pipe(startWith(null)),
         of(true).pipe(delay(1000), startWith(false)),
       ).subscribe(([response, loading]) => {
-        if (response && !response.error) {
+        if (response && response.type === QuestDB.Type.DQL) {
           setColumns(response.data)
           setLoading(false)
         } else {

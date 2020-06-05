@@ -3,45 +3,62 @@ type ColumnDefinition = Readonly<{ name: string; type: string }>
 type Value = string | number | boolean
 type RawData = Record<string, Value>
 
-export const encodeParams = (
-  params: Record<string, string | number | boolean>,
-) =>
-  Object.keys(params)
-    .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
-    .join("&")
+enum Type {
+  DDL = "ddl",
+  DQL = "dql",
+  ERROR = "error",
+}
 
 type HostConfig = Readonly<{
   host: string
   port: number
 }>
 
-export type Result<T extends Record<string, any>> =
-  | {
-      columns: ColumnDefinition[]
-      count: number
-      data: T[]
-      error: false
-    }
-  | {
-      error: true
-      errorDetails: {
-        message: string
-        statusCode: number
-      }
-    }
+type Timings = {
+  compiler: number
+  count: number
+  execute: number
+}
 
-export type ErrorResult = {
+type RawDqlResult = {
+  columns: ColumnDefinition[]
+  count: number
+  dataset: any[][]
+  ddl: undefined
+  query: string
+  timings: Timings
+}
+
+type RawDdlResult = {
+  ddl: "OK"
+}
+
+type RawErrorResult = {
   error: string
   position: number
   query: string
 }
 
-export type ExecResult = {
-  columns: ColumnDefinition[]
-  count: number
-  dataset: any[][]
-  query: string
+export type ErrorResult = RawErrorResult & {
+  type: Type.ERROR
 }
+
+export type DdlResult = {
+  type: Type.DDL
+}
+
+export type Result<T extends Record<string, any>> =
+  | {
+      columns: ColumnDefinition[]
+      count: number
+      data: T[]
+      timings: Timings
+      type: Type.DQL
+    }
+  | ErrorResult
+  | DdlResult
+
+export type RawResult = RawDqlResult | RawDdlResult
 
 export type QuestDBTable = {
   tableName: string
@@ -57,9 +74,18 @@ const hostConfig: HostConfig = {
   port: 9000,
 }
 
+export const encodeParams = (
+  params: Record<string, string | number | boolean>,
+) =>
+  Object.keys(params)
+    .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+    .join("&")
+
 export class QuestDB {
   private _config: HostConfig
   private _controllers: AbortController[] = []
+
+  static Type = Type
 
   constructor(config?: string | Partial<HostConfig>) {
     if (!config) {
@@ -89,6 +115,7 @@ export class QuestDB {
     const controller = new AbortController()
     const payload = {
       query,
+      timings: true,
     }
 
     this._controllers.push(controller)
@@ -105,39 +132,50 @@ export class QuestDB {
 
     if (!response.ok) {
       return {
-        error: true,
-        errorDetails: {
-          message: response.statusText,
-          statusCode: response.status,
-        },
+        error: response.statusText,
+        position: -1,
+        query,
+        type: Type.ERROR,
       }
     }
 
-    const data = (await response.json()) as ExecResult
+    const data = (await response.json()) as RawResult
 
-    const parsed = (data.dataset.map(
+    if (data.ddl) {
+      return { type: Type.DDL }
+    }
+
+    const { columns, count, dataset, timings } = data
+
+    const parsed = (dataset.map(
       (row) =>
         row.reduce(
           (acc: RawData, val: Value, idx) => ({
             ...acc,
-            [data.columns[idx].name]: val,
+            [columns[idx].name]: val,
           }),
           {},
         ) as RawData,
     ) as unknown) as T[]
 
     return {
-      columns: data.columns,
-      count: data.count,
+      columns,
+      count,
       data: parsed,
-      error: false,
+      timings,
+      type: Type.DQL,
     }
   }
 
-  async queryRaw(query: string): Promise<ExecResult | ErrorResult> {
+  async queryRaw(
+    query: string,
+  ): Promise<
+    (Omit<RawDqlResult, "ddl"> & { type: Type.DQL }) | DdlResult | ErrorResult
+  > {
     const controller = new AbortController()
     const payload = {
       query,
+      timings: true,
     }
 
     this._controllers.push(controller)
@@ -153,23 +191,43 @@ export class QuestDB {
     }
 
     if (response.ok) {
-      const data = (await response.json()) as ExecResult
-      return data
+      const data = (await response.json()) as RawResult
+
+      if (data.ddl) {
+        return {
+          type: Type.DDL,
+        }
+      }
+
+      return {
+        ...data,
+        type: Type.DQL,
+      }
     }
 
     if (response.status === 400) {
-      const data = (await response.json()) as ErrorResult
-      return Promise.reject(data)
-    }
-    console.log(response)
+      const data = (await response.json()) as RawErrorResult
 
-    throw new Error("Is QuestDB accessible and running?")
+      // eslint-disable-next-line prefer-promise-reject-errors
+      return Promise.reject({
+        ...data,
+        type: Type.ERROR,
+      })
+    }
+
+    // eslint-disable-next-line prefer-promise-reject-errors
+    return Promise.reject({
+      error: "",
+      position: -1,
+      query,
+      type: Type.ERROR,
+    })
   }
 
   async showTables(): Promise<Result<QuestDBTable>> {
     const response = await this.query<QuestDBTable>("SHOW TABLES;")
 
-    if (!response.error) {
+    if (response.type === Type.DQL) {
       return {
         ...response,
         data: response.data.slice().sort((a, b) => {

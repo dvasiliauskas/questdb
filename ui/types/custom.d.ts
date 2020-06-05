@@ -26,5 +26,5 @@ declare var BACKEND_PORT: number // eslint-disable-line no-var
 // eslint-disable-next-line no-var
 declare var bus: {
   on: (event: string, callback: (event: null, payload: string) => void) => void
-  trigger: (event: string, payload?: string) => void
+  trigger: (event: string, payload?: any) => void
 }

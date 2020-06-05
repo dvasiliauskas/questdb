@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react"
-import { TransitionGroup } from "react-transition-group"
 import { from, combineLatest, of } from "rxjs"
 import { delay, startWith } from "rxjs/operators"
-import styled from "styled-components"
+import styled, { css } from "styled-components"
 import { Database } from "@styled-icons/entypo/Database"
 import { Loader3 } from "@styled-icons/remix-fill/Loader3"
 import { Refresh } from "@styled-icons/remix-line/Refresh"
@@ -25,6 +24,11 @@ type Props = Readonly<{
   widthOffset?: number
 }>
 
+const loadingStyles = css`
+  display: flex;
+  justify-content: center;
+`
+
 const Wrapper = styled(PaneWrapper)<{
   basis?: number
 }>`
@@ -36,9 +40,12 @@ const Menu = styled(PaneMenu)`
   justify-content: space-between;
 `
 
-const Content = styled(PaneContent)`
+const Content = styled(PaneContent)<{
+  _loading: boolean
+}>`
   display: block;
   font-family: ${({ theme }) => theme.fontMonospace};
+  ${({ _loading }) => _loading && loadingStyles};
 `
 
 const DatabaseIcon = styled(Database)`
@@ -73,7 +80,7 @@ const Schema = ({ widthOffset }: Props) => {
       from(quest.showTables()).pipe(startWith(null)),
       of(true).pipe(delay(1000), startWith(false)),
     ).subscribe(([response, loading]) => {
-      if (response && !response.error) {
+      if (response && response.type === QuestDB.Type.DQL) {
         setTables(response.data)
         setLoading(false)
       } else {
@@ -113,20 +120,18 @@ const Schema = ({ widthOffset }: Props) => {
         </PopperHover>
       </Menu>
 
-      <Content>
+      <Content _loading={loading}>
         {loading && <Loader size="48px" />}
-        {!loading && tables && (
-          <TransitionGroup component={null}>
-            {tables.map(({ tableName }) => (
-              <Table
-                expanded={tableName === opened}
-                key={tableName}
-                onChange={handleChange}
-                tableName={tableName}
-              />
-            ))}
-          </TransitionGroup>
-        )}
+        {!loading &&
+          tables &&
+          tables.map(({ tableName }) => (
+            <Table
+              expanded={tableName === opened}
+              key={tableName}
+              onChange={handleChange}
+              tableName={tableName}
+            />
+          ))}
         {!loading && <FlexSpacer />}
       </Content>
     </Wrapper>

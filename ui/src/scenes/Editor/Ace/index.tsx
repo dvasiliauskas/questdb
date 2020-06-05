@@ -1,4 +1,4 @@
-import { Ace as AceBuilds, Range } from "ace-builds"
+import { Range } from "ace-builds"
 import React, { useCallback, useEffect, useRef, useState } from "react"
 import ReactAce from "react-ace"
 import { useDispatch, useSelector } from "react-redux"
@@ -7,13 +7,14 @@ import styled from "styled-components"
 import { PaneContent } from "components"
 import { actions, selectors } from "store"
 import { theme } from "theme"
-import { BusEvent, color, ExecResult, QuestDB } from "utils"
+import { BusEvent, color, ErrorResult, QuestDB } from "utils"
 
 import questdbMode from "./questdbMode"
 import {
   getQueryFromCursor,
   getQueryFromSelection,
   loadPreferences,
+  Request,
   savePreferences,
   toTextPosition,
 } from "./utils"
@@ -26,6 +27,13 @@ const Content = styled(PaneContent)`
     transform: scale(1.05);
     z-index: 6;
   }
+
+  .syntax-error {
+    position: absolute;
+    border-bottom: 1px solid ${color("draculaRed")};
+    cursor: pointer;
+    pointer-events: auto;
+  }
 `
 
 enum Command {
@@ -35,7 +43,7 @@ enum Command {
 }
 
 const Ace = () => {
-  const [fetching, setFetching] = useState(false)
+  const [request, setRequest] = useState<Request | undefined>()
   const [value, setValue] = useState("")
   const aceEditor = useRef<ReactAce | null>(null)
   const dispatch = useDispatch()
@@ -45,43 +53,13 @@ const Ace = () => {
     setValue(value)
   }, [])
 
-  const setError = (editor: AceBuilds.Editor, err: string) => {
-    const position = toTextPosition(err.query, err.position)
-    setFetching(false)
-    dispatch(actions.query.stopRunning())
-    const token = editor.session.getTokenAt(
-      position.row - 1,
-      position.column,
-    ) || {
-      value: "",
-    }
-    const range = new Range(
-      position.row - 1,
-      position.column - 1,
-      position.row - 1,
-      position.column + token.value.length - 1,
-    )
-
-    editor.session.addMarker(range, "js-syntax-error", "text", true)
-
-    editor.gotoLine(position.row, position.column - 1, true)
-    editor.focus()
-  }
-
-  const setResult = (result: ExecResult) => {
-    console.log(result)
-    setFetching(false)
-    dispatch(actions.query.stopRunning())
-    // bus.trigger(BusEvent.MSG_QUERY_DATASET, row)
-  }
-
   useEffect(() => {
-    if (!running && fetching) {
+    if (!running && request) {
       quest.abort()
       dispatch(actions.query.stopRunning())
-      setFetching(false)
+      setRequest(undefined)
     }
-  }, [dispatch, running, fetching])
+  }, [dispatch, request, running])
 
   useEffect(() => {
     if (!aceEditor.current) {
@@ -92,11 +70,11 @@ const Ace = () => {
 
     if (running) {
       savePreferences(editor)
-      const markers = editor.session.getMarkers()
+      const markers = editor.session.getMarkers(true)
 
       if (markers) {
-        Object.values(markers).forEach((_m, i) => {
-          editor.session.removeMarker(i)
+        Object.keys(markers).forEach((marker) => {
+          editor.session.removeMarker(parseInt(marker, 10))
         })
       }
 
@@ -108,9 +86,38 @@ const Ace = () => {
       if (request && request.query) {
         void quest
           .queryRaw(request.query)
-          .then(setResult)
-          .catch((error) => setError(editor, error))
-        setFetching(true)
+          .then((result) => {
+            setRequest(undefined)
+            dispatch(actions.query.stopRunning())
+
+            if (result.type === QuestDB.Type.DQL) {
+              bus.trigger(BusEvent.MSG_QUERY_DATASET, result)
+            }
+          })
+          .catch((error: ErrorResult) => {
+            setRequest(undefined)
+            dispatch(actions.query.stopRunning())
+
+            const position = toTextPosition(request, error.position)
+            const token = editor.session.getTokenAt(
+              position.row - 1,
+              position.column,
+            ) || {
+              value: "",
+            }
+            const range = new Range(
+              position.row - 1,
+              position.column - 1,
+              position.row - 1,
+              position.column + token.value.length - 1,
+            )
+
+            editor.session.addMarker(range, "syntax-error", "text", true)
+            editor.gotoLine(position.row, position.column - 1, true)
+            editor.focus()
+          })
+
+        setRequest(request)
       } else {
         dispatch(actions.query.stopRunning())
       }
@@ -195,6 +202,8 @@ const Ace = () => {
         editor.setValue(query)
       }
     })
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
